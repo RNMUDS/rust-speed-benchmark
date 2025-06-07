@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use warp::Filter;
 
 #[derive(Serialize, Deserialize)]
@@ -114,24 +113,6 @@ async fn run_other_language_benchmarks() -> Vec<BenchmarkResult> {
         }
     }
     
-    // Run Java benchmarks
-    if let Ok(_) = Command::new("javac")
-        .arg("benchmarks/java/Benchmark.java")
-        .output()
-    {
-        if let Ok(output) = Command::new("java")
-            .arg("-cp")
-            .arg("benchmarks/java")
-            .arg("Benchmark")
-            .output()
-        {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                if let Ok(java_results) = serde_json::from_str::<Vec<BenchmarkResult>>(&stdout) {
-                    results.extend(java_results);
-                }
-            }
-        }
-    }
     
     results
 }
