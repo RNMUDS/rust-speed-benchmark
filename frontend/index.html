@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust Speed Benchmark Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .run-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .run-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .run-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            display: none;
+            margin-left: 15px;
+            color: #667eea;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        
+        .chart-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+            text-align: center;
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        
+        .results-table th,
+        .results-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .results-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .results-table tr:hover {
+            background: #f1f3f4;
+        }
+        
+        .language-rust { color: #CE422B; font-weight: 600; }
+        .language-python { color: #3776AB; font-weight: 600; }
+        .language-javascript { color: #F7DF1E; font-weight: 600; }
+        .language-java { color: #ED8B00; font-weight: 600; }
+        
+        .performance-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .fastest { background: #d4edda; color: #155724; }
+        .fast { background: #d1ecf1; color: #0c5460; }
+        .slow { background: #f8d7da; color: #721c24; }
+        
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🦀 Rust Speed Benchmark</h1>
+            <p>Compare Rust performance against Python, JavaScript, and Java</p>
+        </div>
+        
+        <div class="controls">
+            <button class="run-button" onclick="runBenchmarks()">
+                🚀 Run Benchmarks
+            </button>
+            <span class="loading" id="loading">Running benchmarks...</span>
+        </div>
+        
+        <div class="content">
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div class="chart-title">Execution Time Comparison</div>
+                    <canvas id="timeChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Operations Per Second</div>
+                    <canvas id="opsChart"></canvas>
+                </div>
+            </div>
+            
+            <table class="results-table" id="resultsTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Language</th>
+                        <th>Test</th>
+                        <th>Duration (ms)</th>
+                        <th>Ops/Second</th>
+                        <th>Performance</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let timeChart, opsChart;
+        
+        function initCharts() {
+            const timeCtx = document.getElementById('timeChart').getContext('2d');
+            const opsCtx = document.getElementById('opsChart').getContext('2d');
+            
+            timeChart = new Chart(timeCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Execution Time (ms)',
+                        data: [],
+                        backgroundColor: [
+                            'rgba(206, 66, 43, 0.8)',   // Rust
+                            'rgba(55, 118, 171, 0.8)',  // Python
+                            'rgba(247, 223, 30, 0.8)',  // JavaScript
+                            'rgba(237, 139, 0, 0.8)'    // Java
+                        ],
+                        borderColor: [
+                            'rgba(206, 66, 43, 1)',
+                            'rgba(55, 118, 171, 1)',
+                            'rgba(247, 223, 30, 1)',
+                            'rgba(237, 139, 0, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Time (milliseconds)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            opsChart = new Chart(opsCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Operations Per Second',
+                        data: [],
+                        backgroundColor: [
+                            'rgba(206, 66, 43, 0.8)',
+                            'rgba(55, 118, 171, 0.8)',
+                            'rgba(247, 223, 30, 0.8)',
+                            'rgba(237, 139, 0, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(206, 66, 43, 1)',
+                            'rgba(55, 118, 171, 1)',
+                            'rgba(247, 223, 30, 1)',
+                            'rgba(237, 139, 0, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Operations/Second'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function runBenchmarks() {
+            const button = document.querySelector('.run-button');
+            const loading = document.getElementById('loading');
+            const resultsTable = document.getElementById('resultsTable');
+            
+            button.disabled = true;
+            loading.style.display = 'inline';
+            resultsTable.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/benchmark');
+                const data = await response.json();
+                
+                updateCharts(data.results);
+                updateTable(data.results);
+                
+                resultsTable.style.display = 'table';
+            } catch (error) {
+                console.error('Error running benchmarks:', error);
+                alert('Error running benchmarks. Make sure all language runtimes are installed.');
+            } finally {
+                button.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+        
+        function updateCharts(results) {
+            const groupedByTest = {};
+            results.forEach(result => {
+                if (!groupedByTest[result.test_name]) {
+                    groupedByTest[result.test_name] = {};
+                }
+                groupedByTest[result.test_name][result.language] = result;
+            });
+            
+            // Update time chart with first test
+            const firstTest = Object.keys(groupedByTest)[0];
+            if (firstTest) {
+                const testResults = groupedByTest[firstTest];
+                const languages = ['Rust', 'Python', 'JavaScript', 'Java'];
+                const timeData = languages.map(lang => testResults[lang]?.duration_ms || 0);
+                const opsData = languages.map(lang => testResults[lang]?.operations_per_second || 0);
+                
+                timeChart.data.labels = languages;
+                timeChart.data.datasets[0].data = timeData;
+                timeChart.update();
+                
+                opsChart.data.labels = languages;
+                opsChart.data.datasets[0].data = opsData;
+                opsChart.update();
+            }
+        }
+        
+        function updateTable(results) {
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = '';
+            
+            // Group by test and find fastest for each
+            const groupedByTest = {};
+            results.forEach(result => {
+                if (!groupedByTest[result.test_name]) {
+                    groupedByTest[result.test_name] = [];
+                }
+                groupedByTest[result.test_name].push(result);
+            });
+            
+            // Sort each group by duration and add performance badges
+            Object.keys(groupedByTest).forEach(testName => {
+                const testResults = groupedByTest[testName].sort((a, b) => a.duration_ms - b.duration_ms);
+                
+                testResults.forEach((result, index) => {
+                    const row = document.createElement('tr');
+                    
+                    let performanceBadge = '';
+                    if (index === 0) performanceBadge = '<span class="performance-badge fastest">Fastest</span>';
+                    else if (index === 1) performanceBadge = '<span class="performance-badge fast">Fast</span>';
+                    else performanceBadge = '<span class="performance-badge slow">Slow</span>';
+                    
+                    row.innerHTML = `
+                        <td><span class="language-${result.language.toLowerCase()}">${result.language}</span></td>
+                        <td>${result.test_name}</td>
+                        <td>${result.duration_ms.toFixed(2)}</td>
+                        <td>${result.operations_per_second.toFixed(2)}</td>
+                        <td>${performanceBadge}</td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            });
+        }
+        
+        // Initialize charts when page loads
+        document.addEventListener('DOMContentLoaded', initCharts);
+    </script>
+</body>
+</html>
